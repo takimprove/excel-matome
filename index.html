@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="複数のExcel・CSVファイルを、列名で揃えて1つにまとめる無料ツール。ファイルはブラウザの中だけで処理され、どこにも送信されません。">
+<title>Excelまとめ箱</title>
+<style>[hidden]{display:none!important} img{max-width:100%} body{margin:0} footer a{color:var(--accent)}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=BIZ+UDGothic:wght@400;700&family=Zen+Kaku+Gothic+New:wght@700;900&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout: one working column — intake, then checks, then the merged result; reads like a ledger form filled top to bottom */
+:root{
+  --paper:#F3F5F4; --sheet:#FFFFFF; --ink:#18221F; --muted:#5B6863; --line:#D5DDDA; --grid:#E7ECEA;
+  --accent:#0F6E64; --accent-ink:#FFFFFF; --accent-soft:#E1F0ED;
+  --warn:#9A5B00; --warn-soft:#FFF2DC; --bad:#A12A2A; --bad-soft:#FBE6E4; --ok:#1F7A3D;
+  --f-display:"Zen Kaku Gothic New","BIZ UDPGothic","Hiragino Sans","Yu Gothic",sans-serif;
+  --f-body:"BIZ UDPGothic","Hiragino Sans","Yu Gothic","Meiryo",sans-serif;
+  --f-data:"BIZ UDGothic","Hiragino Sans","Yu Gothic",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#121816; --sheet:#1A2220; --ink:#E6EEEB; --muted:#9AA8A3; --line:#2E3A37; --grid:#25302D;
+  --accent:#4FC3B2; --accent-ink:#0B1513; --accent-soft:#163631;
+  --warn:#F0B35A; --warn-soft:#3A2C14; --bad:#F08A80; --bad-soft:#3A1C1A; --ok:#6FD08E; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#121816; --sheet:#1A2220; --ink:#E6EEEB; --muted:#9AA8A3; --line:#2E3A37; --grid:#25302D;
+  --accent:#4FC3B2; --accent-ink:#0B1513; --accent-soft:#163631;
+  --warn:#F0B35A; --warn-soft:#3A2C14; --bad:#F08A80; --bad-soft:#3A1C1A; --ok:#6FD08E; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.7;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 56px}
+.wrap{max-width:1040px;margin:0 auto;display:grid;gap:22px}
+header{display:grid;gap:6px}
+h1{font-family:var(--f-display);font-weight:900;font-size:clamp(28px,5vw,40px);line-height:1.2;margin:0;letter-spacing:.02em;text-wrap:balance}
+h1 .cell{display:inline-block;border:2px solid var(--accent);padding:0 .25em;margin-right:.15em;color:var(--accent)}
+.lead{margin:0;color:var(--muted);max-width:62ch}
+.privacy{display:inline-flex;gap:8px;align-items:center;font-size:13px;color:var(--accent);background:var(--accent-soft);padding:4px 10px;border-radius:4px;width:fit-content}
+h2{font-family:var(--f-display);font-size:18px;margin:0;letter-spacing:.03em}
+.step{display:flex;gap:10px;align-items:baseline}
+.step b{font-family:var(--f-data);font-size:12px;color:var(--accent);letter-spacing:.08em;white-space:nowrap}
+section.panel{background:var(--sheet);border:1px solid var(--line);border-radius:6px;padding:20px;display:grid;gap:16px;min-width:0}
+.drop{border:2px dashed var(--line);border-radius:6px;padding:26px 16px;text-align:center;display:grid;gap:8px;justify-items:center;
+  background:repeating-linear-gradient(0deg,transparent 0 27px,var(--grid) 27px 28px),repeating-linear-gradient(90deg,transparent 0 79px,var(--grid) 79px 80px);transition:border-color .15s}
+.drop.over{border-color:var(--accent)}
+.drop p{margin:0}
+.drop .big{font-weight:700;font-size:16px}
+.drop small{color:var(--muted)}
+.opts{display:flex;flex-wrap:wrap;gap:14px 24px;align-items:center}
+.opt{display:flex;gap:8px;align-items:center;font-size:14px}
+.opt input[type=number]{width:64px}
+.opt input[type=text]{width:140px}
+input[type=number],input[type=text],select{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:4px 8px}
+button{font:inherit;cursor:pointer;border-radius:4px;border:1px solid var(--line);background:var(--sheet);color:var(--ink);padding:8px 14px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700;padding:10px 20px;font-size:16px}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,label.btn:focus-within{outline:3px solid var(--accent);outline-offset:2px}
+label.btn{display:inline-block;cursor:pointer;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:6px 14px;font-weight:700}
+label.btn input{position:absolute;opacity:0;width:1px;height:1px}
+.sample-note{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:13px;color:var(--warn);background:var(--warn-soft);padding:8px 12px;border-radius:4px}
+.sample-note button{padding:4px 10px;font-size:13px}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:4px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border-bottom:1px solid var(--grid);padding:6px 10px;text-align:left;white-space:nowrap}
+th{background:var(--paper);font-weight:700;position:sticky;top:0}
+td.num,th.num{text-align:right;font-family:var(--f-data);font-variant-numeric:tabular-nums}
+.rowno{color:var(--muted);font-family:var(--f-data);text-align:right}
+.chip{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;font-weight:700}
+.chip.ok{color:var(--ok);background:var(--accent-soft)}
+.chip.warn{color:var(--warn);background:var(--warn-soft)}
+.chip.bad{color:var(--bad);background:var(--bad-soft)}
+.note{font-size:12px;color:var(--muted);white-space:normal;min-width:180px}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat{border-left:3px solid var(--accent);padding:2px 12px}
+.stat .v{font-family:var(--f-data);font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.stat .k{font-size:12px;color:var(--muted)}
+.stat.warn{border-color:var(--warn)}
+.actions{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.status{font-size:14px;color:var(--muted)}
+.status.err{color:var(--bad)}
+.preview-cap{font-size:12px;color:var(--muted);margin:0}
+footer{font-size:12px;color:var(--muted)}
+.rm{border:none;background:none;color:var(--muted);padding:0 4px;font-size:16px;line-height:1}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="cell">Excel</span>まとめ箱</h1>
+    <p class="lead">毎月バラバラに届くExcelやCSVを、1つのファイルにまとめます。列の名前がファイルごとに違っていても、名前で揃えてつなぎます。</p>
+    <span class="privacy">● ファイルはこのブラウザの中だけで処理され、どこにも送信されません</span>
+  </header>
+
+  <section class="panel" aria-labelledby="h-in">
+    <div class="step"><b>STEP 1</b><h2 id="h-in">まとめたいファイルを入れる</h2></div>
+    <div class="drop" id="drop">
+      <p class="big">ここにExcel・CSVファイルをまとめてドラッグ</p>
+      <small>.xlsx / .xls / .csv（Shift_JISのCSVも文字化けしません）</small>
+      <label class="btn" for="picker">ファイルを選ぶ<input type="file" id="picker" multiple accept=".xlsx,.xls,.xlsm,.csv"></label>
+    </div>
+    <div class="opts">
+      <div class="opt"><label for="sheetMode">読むシート</label>
+        <select id="sheetMode"><option value="first">各ファイルの最初のシート</option><option value="name">シート名を指定</option></select>
+        <input type="text" id="sheetName" placeholder="例：売上" hidden aria-label="シート名">
+      </div>
+      <div class="opt"><label for="headerRow">見出しの行</label><input type="number" id="headerRow" min="1" max="50" value="1"><span>行目</span></div>
+      <div class="opt"><input type="checkbox" id="addSource" checked><label for="addSource">元のファイル名を列に追加</label></div>
+    </div>
+    <div class="sample-note" id="sampleNote">
+      <span>いま表示しているのは<b>動作確認用のサンプル</b>（架空の3店舗・3か月分）です。</span>
+      <button type="button" id="clearBtn">サンプルを消す</button>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-check">
+    <div class="step"><b>STEP 2</b><h2 id="h-check">中身を確かめる</h2></div>
+    <div class="summary" id="summary"></div>
+    <div class="tablebox"><table id="fileTable"><thead><tr><th>ファイル</th><th>シート</th><th class="num">行数</th><th class="num">列数</th><th>状態</th><th>メモ</th><th><span class="sr" hidden>削除</span></th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-out">
+    <div class="step"><b>STEP 3</b><h2 id="h-out">まとめたファイルを保存する</h2></div>
+    <div class="actions">
+      <button type="button" class="primary" id="saveBtn" disabled>まとめたExcelを保存</button>
+      <span class="status" id="status" role="status"></span>
+    </div>
+    <p class="preview-cap" id="previewCap"></p>
+    <div class="tablebox" style="max-height:420px;overflow:auto"><table id="preview"></table></div>
+  </section>
+
+  <footer>保存されるファイルには「まとめ」シートと、各ファイルの行数を記録した「ファイル一覧」シートが入ります。行数の合計が一致しているかで、取り込み漏れがないか確かめられます。<br>本ツールは無料・無保証です。大切なファイルは元のファイルを残したうえでお使いください。Excelファイルの読み書きには <a href="https://sheetjs.com/" target="_blank" rel="noopener">SheetJS</a>（Apache License 2.0）を使用しています。</footer>
+</div>
+
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const state = { files: [], sample: false };
+  const SAMPLE_LIMIT = 30;
+
+  // ── 読み込み ──────────────────────────────────────
+  function decodeCsv(buf){
+    try { return new TextDecoder('utf-8',{fatal:true}).decode(buf).replace(/^﻿/,''); }
+    catch(e){ return new TextDecoder('shift_jis').decode(buf); }
+  }
+  async function readWorkbook(file){
+    const buf = await file.arrayBuffer();
+    if (/\.csv$/i.test(file.name)) return XLSX.read(decodeCsv(buf), {type:'string', cellDates:true, raw:false});
+    return XLSX.read(buf, {type:'array', cellDates:true});
+  }
+  function cleanHeaders(row){
+    const seen = {};
+    return (row||[]).map((h,i)=>{
+      let n = (h===null||h===undefined||String(h).trim()==='') ? '列'+(i+1) : String(h).trim();
+      if (seen[n]) { seen[n]++; n = n+'_'+seen[n]; } else seen[n]=1;
+      return n;
+    });
+  }
+  function parseSheet(wb, fname){
+    const mode = $('#sheetMode').value, want = $('#sheetName').value.trim();
+    let sheet = wb.SheetNames[0];
+    if (mode==='name'){
+      if (!want) return {fname, error:'シート名が空です'};
+      if (!wb.SheetNames.includes(want)) return {fname, error:'「'+want+'」というシートがありません（あるシート：'+wb.SheetNames.join('、')+'）'};
+      sheet = want;
+    }
+    const hr = Math.max(1, parseInt($('#headerRow').value,10)||1);
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheet], {header:1, raw:true, defval:null, blankrows:false});
+    if (aoa.length < hr) return {fname, sheet, error:'見出しの行（'+hr+'行目）までデータがありません'};
+    const cols = cleanHeaders(aoa[hr-1]);
+    const rows = [];
+    for (let i=hr; i<aoa.length; i++){
+      const r = aoa[i]; if (!r || r.every(v=>v===null||v==='')) continue;
+      const o = {}; cols.forEach((c,j)=>{ o[c] = r[j]===undefined ? null : r[j]; }); rows.push(o);
+    }
+    return {fname, sheet, cols, rows};
+  }
+  async function addFiles(list){
+    if (state.sample){ state.files = []; state.sample = false; $('#sampleNote').hidden = true; }
+    const arr = Array.from(list).filter(f=>/\.(xlsx|xls|xlsm|csv)$/i.test(f.name));
+    if (!arr.length){ setStatus('Excel（.xlsx / .xls）かCSVのファイルを選んでください', true); return; }
+    setStatus(arr.length+'件を読み込み中…');
+    for (const f of arr){
+      try { const wb = await readWorkbook(f); const p = parseSheet(wb, f.name); p.wb = wb; state.files.push(p); }
+      catch(e){ state.files.push({fname:f.name, error:'読み込めませんでした（壊れているか、パスワード付きの可能性があります）'}); }
+    }
+    state.files.sort((a,b)=>a.fname.localeCompare(b.fname,'ja',{numeric:true}));
+    setStatus('');
+    render();
+  }
+  function reparse(){
+    state.files = state.files.map(f => f.wb ? Object.assign(parseSheet(f.wb, f.fname), {wb:f.wb}) : f);
+    render();
+  }
+
+  // ── まとめる ──────────────────────────────────────
+  function merge(){
+    const good = state.files.filter(f=>!f.error);
+    const all = [];
+    good.forEach(f=>f.cols.forEach(c=>{ if(!all.includes(c)) all.push(c); }));
+    const addSrc = $('#addSource').checked;
+    const header = addSrc ? ['元ファイル', ...all] : all;
+    const rows = [];
+    good.forEach(f=>f.rows.forEach(r=>{
+      const o = {}; if (addSrc) o['元ファイル'] = f.fname;
+      all.forEach(c=>{ o[c] = (c in r) ? r[c] : null; }); rows.push(o);
+    }));
+    return {header, rows, good, all};
+  }
+  function colNotes(f, base){
+    if (!base) return '';
+    const miss = base.filter(c=>!f.cols.includes(c)), extra = f.cols.filter(c=>!base.includes(c));
+    const out = [];
+    if (extra.length) out.push('このファイルだけにある列：'+extra.join('、'));
+    if (miss.length) out.push('ない列（空欄になります）：'+miss.join('、'));
+    return out.join(' ／ ');
+  }
+
+  // ── 表示 ──────────────────────────────────────────
+  const fmt = v => {
+    if (v===null || v===undefined) return '';
+    if (v instanceof Date) return v.getFullYear()+'/'+String(v.getMonth()+1).padStart(2,'0')+'/'+String(v.getDate()).padStart(2,'0');
+    if (typeof v==='number') return Number.isInteger(v) ? v.toLocaleString('ja-JP') : v.toLocaleString('ja-JP',{maximumFractionDigits:4});
+    return String(v);
+  };
+  function el(tag, attrs, text){ const e=document.createElement(tag); if(attrs) for(const k in attrs) e.setAttribute(k,attrs[k]); if(text!==undefined) e.textContent=text; return e; }
+
+  function render(){
+    const m = merge();
+    const base = m.good.length ? m.good[0].cols : null;
+    const tb = $('#fileTable tbody'); tb.textContent='';
+    let warnN = 0;
+    if (!state.files.length){
+      const tr = el('tr'); const td = el('td',{colspan:7,class:'note'},'まだファイルがありません。STEP 1 でファイルを入れてください。'); tr.appendChild(td); tb.appendChild(tr);
+    }
+    state.files.forEach((f,i)=>{
+      const tr = el('tr');
+      tr.appendChild(el('td',null,f.fname));
+      tr.appendChild(el('td',null,f.sheet||'—'));
+      tr.appendChild(el('td',{class:'num'}, f.error?'—':f.rows.length.toLocaleString('ja-JP')));
+      tr.appendChild(el('td',{class:'num'}, f.error?'—':String(f.cols.length)));
+      const st = el('td'); let chip;
+      const note = f.error ? f.error : colNotes(f, base);
+      if (f.error){ chip = el('span',{class:'chip bad'},'読めません'); }
+      else if (note){ chip = el('span',{class:'chip warn'},'列が違います'); warnN++; }
+      else chip = el('span',{class:'chip ok'},'OK');
+      st.appendChild(chip); tr.appendChild(st);
+      tr.appendChild(el('td',{class:'note'},note));
+      const rmTd = el('td'); const rm = el('button',{type:'button',class:'rm','aria-label':f.fname+'を外す',title:'外す'},'×');
+      rm.addEventListener('click',()=>{ state.files.splice(i,1); render(); }); rmTd.appendChild(rm); tr.appendChild(rmTd);
+      tb.appendChild(tr);
+    });
+
+    const errN = state.files.filter(f=>f.error).length;
+    const sum = $('#summary'); sum.textContent='';
+    [['ファイル', m.good.length+(errN?' / '+state.files.length:''), errN],
+     ['まとめた行数', m.rows.length.toLocaleString('ja-JP')],
+     ['列の数', String(m.header.length)],
+     ['確認が必要', String(warnN+errN), warnN+errN]].forEach(([k,v,w])=>{
+      const d = el('div',{class:'stat'+(w?' warn':'')}); d.appendChild(el('div',{class:'v'},v)); d.appendChild(el('div',{class:'k'},k)); sum.appendChild(d);
+    });
+
+    const pv = $('#preview'); pv.textContent='';
+    if (m.rows.length){
+      const thead = el('thead'), htr = el('tr'); htr.appendChild(el('th',{class:'num'},'#'));
+      m.header.forEach(h=>htr.appendChild(el('th',null,h))); thead.appendChild(htr); pv.appendChild(thead);
+      const tbody = el('tbody');
+      m.rows.slice(0,SAMPLE_LIMIT).forEach((r,i)=>{
+        const tr = el('tr'); tr.appendChild(el('td',{class:'rowno'},String(i+1)));
+        m.header.forEach(h=>{ const v=r[h]; tr.appendChild(el('td', typeof v==='number'?{class:'num'}:null, fmt(v))); });
+        tbody.appendChild(tr);
+      });
+      pv.appendChild(tbody);
+      $('#previewCap').textContent = '先頭'+Math.min(SAMPLE_LIMIT,m.rows.length)+'行のプレビュー（全'+m.rows.length.toLocaleString('ja-JP')+'行）';
+    } else $('#previewCap').textContent = '';
+    $('#saveBtn').disabled = !m.rows.length;
+  }
+  function setStatus(t, err){ const s=$('#status'); s.textContent=t; s.classList.toggle('err',!!err); }
+
+  // ── 保存 ──────────────────────────────────────────
+  let downloads = null;
+  if (window.claude && window.claude.use) window.claude.use('downloads').then(d=>{ downloads=d; }).catch(()=>{});
+  function buildWorkbook(){
+    const m = merge();
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(m.rows, {header:m.header, cellDates:true, dateNF:'yyyy/mm/dd'});
+    ws['!cols'] = m.header.map(h=>({wch: Math.min(40, Math.max(8, String(h).length*2+2))}));
+    ws['!autofilter'] = {ref: XLSX.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(m.rows.length,1),c:m.header.length-1}})};
+    XLSX.utils.book_append_sheet(wb, ws, 'まとめ');
+    const list = state.files.map(f=>({'ファイル':f.fname,'シート':f.sheet||'','行数':f.error?null:f.rows.length,'メモ':f.error||colNotes(f, m.good[0]&&m.good[0].cols)}));
+    list.push({'ファイル':'合計','シート':'','行数':m.rows.length,'メモ':''});
+    const ws2 = XLSX.utils.json_to_sheet(list); ws2['!cols']=[{wch:32},{wch:12},{wch:10},{wch:60}];
+    XLSX.utils.book_append_sheet(wb, ws2, 'ファイル一覧');
+    return {wb, n:m.rows.length};
+  }
+  $('#saveBtn').addEventListener('click', async ()=>{
+    const {wb, n} = buildWorkbook();
+    const d = new Date(), stamp = d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
+    const filename = 'まとめ_'+stamp+'.xlsx';
+    if (downloads){
+      try {
+        const data = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+        await downloads.save({filename, data});
+        setStatus(n.toLocaleString('ja-JP')+'行を「'+filename+'」として保存しました');
+      } catch(e){
+        const c = e && e.code;
+        if (c==='declined') setStatus('保存をキャンセルしました');
+        else if (c==='rate_limited') setStatus('保存の確認画面がすでに開いています。そちらを閉じてからもう一度押してください', true);
+        else setStatus('この画面では保存できません。ツールを公開したページから使ってください', true);
+      }
+    } else {
+      try { XLSX.writeFile(wb, filename); setStatus(n.toLocaleString('ja-JP')+'行を「'+filename+'」として保存しました'); }
+      catch(e){ setStatus('保存できませんでした：'+(e.message||e), true); }
+    }
+  });
+
+  // ── 操作 ──────────────────────────────────────────
+  const drop = $('#drop');
+  ['dragenter','dragover'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add('over');}));
+  ['dragleave','drop'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.remove('over');}));
+  drop.addEventListener('drop', e=>addFiles(e.dataTransfer.files));
+  $('#picker').addEventListener('change', e=>{ addFiles(e.target.files); e.target.value=''; });
+  $('#sheetMode').addEventListener('change', ()=>{ $('#sheetName').hidden = $('#sheetMode').value!=='name'; reparse(); });
+  $('#sheetName').addEventListener('change', reparse);
+  $('#headerRow').addEventListener('change', reparse);
+  $('#addSource').addEventListener('change', render);
+  $('#clearBtn').addEventListener('click', ()=>{ state.files=[]; state.sample=false; $('#sampleNote').hidden=true; render(); });
+
+  // ── サンプル（架空データ） ──────────────────────────
+  function makeSample(){
+    const shops=['金沢店','加賀店','小松店'], items=[['加賀棒茶',860],['九谷焼マグ',3200],['治部煮セット',1580],['かぶら寿し',2100]];
+    let seed=11; const rnd=()=>{ seed=(seed*16807)%2147483647; return seed/2147483647; };
+    [1,2,3].forEach(m=>{
+      const head = ['日付','店舗','商品','数量','単価','金額'].concat(m===3?['担当']:[]);
+      const aoa=[head];
+      for(let d=1; d<=8; d++) shops.forEach(s=>{ const it=items[Math.floor(rnd()*items.length)], q=1+Math.floor(rnd()*6);
+        const row=[new Date(2026,m-1,d*3), s, it[0], q, it[1], q*it[1]]; if(m===3) row.push(['山田','佐藤','中村'][Math.floor(rnd()*3)]); aoa.push(row); });
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa,{cellDates:true}), '売上');
+      const p = parseSheet(wb, '売上_2026年'+String(m).padStart(2,'0')+'月.xlsx'); p.wb = wb; state.files.push(p);
+    });
+    state.sample = true;
+  }
+  if (window.XLSX){ makeSample(); render(); }
+  else { setStatus('部品の読み込みに失敗しました。ページを再読み込みしてください', true); $('#sampleNote').hidden=true; }
+})();
+</script>
+</body>
+</html>
